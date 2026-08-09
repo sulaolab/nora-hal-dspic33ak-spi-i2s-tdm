@@ -46,8 +46,8 @@ needs.
 - No codec init (e.g. WM8904) — that is board/app code.
 - No general board pin routing in the core — board FS/BCLK/DATA/MCLK routing is supplied by
   the registered port hook. **Exception:** for `TDM master + FS_50PCT`, the HAL-owned CLC10
-  helper (`nora_spi_i2s_tdm_dspic33ak_fs_clc.*`) temporarily repoints the already-routed `SSx` FS
-  pin to `CLC10OUT` (and routes `SSx`→RPV8) and restores it on `release()`.
+  helper (`nora_spi_i2s_tdm_dspic33ak_fs_clc.*`) temporarily repoints the already-routed
+  `SSx` FS pin to `CLC10OUT` (and routes `SSx`→RPV8) and restores it on `release()`.
 - No DSP — the callback owns any processing.
 - No sample-rate policy — the transport is rate-agnostic (runs at the configured BRG or
   the incoming external clock); the supported-rate set is an app concern.
