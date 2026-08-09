@@ -158,6 +158,53 @@ diff shows is the device-adapter macro's name, which reverse-normalises onto the
 old text — the mechanical proof that the starter's fix there (`a2ce22a`) was
 naming and nothing else.
 
+## Comment corrections made here, ahead of upstream
+
+Everything above describes the state as published on 2026-08-08, when every file under
+`src/` was byte-identical to upstream. On **2026-08-09** a documentation review found a
+class of error that the identity proof above cannot see, and it was fixed here first
+rather than waiting for the next upstream refresh.
+
+* `src/README.md` was a generation behind the root README. It still listed **CPU IRQ
+  `IEC`/`IFS` masks** among the things to add for a new device, which the content
+  refresh removed in favour of the DFP's `_DMAxIE` / `_DMAxIF` bit aliases — the root
+  README says so explicitly at "Adding a new dsPIC33AK part". That is not a branding
+  slip; a reader following the folder README would have gone looking for a mask table
+  that no longer exists. The section now mirrors the root README, including `DMA trigger
+  values (as nora_dma_trigger_t)`.
+* `src/README.md` also named `nora_spi_i2s_tdm_fs_clc.{c,h}` and
+  `nora_spi_i2s_tdm_hw.{c,h}`, which do not exist — the files carry the backend tag
+  (`nora_spi_i2s_tdm_dspic33ak_fs_clc.*`, `..._dspic33ak_hw.*`). The same untagged names
+  appeared in four comments in `nora_spi_i2s_tdm.h`, `nora_spi_i2s_tdm_dspic33ak.c` and
+  `nora_spi_i2s_tdm_dspic33ak_hw.h`. Within the folder README the references were mixed
+  — `..._dspic33ak_reg.h` was already tagged correctly while `..._hw` a few lines below
+  it was not — which is the signature of a rename that updated file names and only some
+  of the prose.
+* Eight comments across seven files said `dsPIC33A` where they mean the dsPIC33AK
+  backend, including the `#error` text for an unsupported device.
+
+No executable code changed. The edits are comments and Markdown; the compiled
+result is unchanged.
+
+### Why the proof in "Proof of identity" does not catch this
+
+Step 3 reverse-normalises the NORA names back to `dspic33ak_*` and diffs against the
+pre-rename blob, so whatever is left is not naming. Two error classes cancel out exactly
+in that diff and are therefore invisible to it:
+
+* **A document reference to a file that was renamed.** A prose mention of
+  `nora_<mod>_hw.{c,h}` reverse-normalises to `dspic33ak_<mod>_hw.{c,h}`, which is the
+  *correct* pre-rename name — the diff is empty, yet the file is now called
+  `nora_<mod>_dspic33ak_hw.{c,h}` and the reference is dead. The same cancellation hides
+  `Nora` vs `NORA` and `dsPIC33A` vs `dsPIC33AK`: both sides of the diff are naming, so
+  naming errors are exactly what it is blind to.
+* **A document that omits a file the refresh added.** An absent line produces no diff
+  line at all.
+
+Both are real here. Neither is detectable by reverse-normalisation; both are detectable
+by resolving every `nora_*.{c,h}` mentioned in prose against the actual contents of
+`src/`, which is now how they were found.
+
 ## Hardware evidence
 
 There is no build or test in this repository — it is sources only. The evidence is
