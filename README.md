@@ -15,10 +15,14 @@ only what it needs.
 > which vendors validated snapshots of the NORA-HAL repositories and provides a
 > ready-to-build MPLAB X project for the dsPIC33AK Curiosity board.
 
-> **This repository is a published snapshot, not the development tree.** Every file under
-> `src/` is byte-identical to its counterpart in `dspic33ak-hal-starter`, which is in turn
-> byte-identical to the audio-board project that runs these sources on hardware. Fixes flow
-> *into* here from that validated tree — see [docs/nora_migration.md](docs/nora_migration.md).
+> **This repository is a published snapshot, not the development tree.** Every **source
+> file** under `src/` — all ten `.c`/`.h` plus `nora_spi_i2s_tdm_conf.h_example` — is
+> byte-identical to its counterpart in `dspic33ak-hal-starter`, which is in turn byte-identical
+> to the audio-board project that runs these sources on hardware (re-measured 2026-08-09).
+> `src/README.md` is publication documentation and is a deliberate **non-source exception**: it
+> matches the starter's copy but not the audio project's, which carries an upstream-only
+> section. Fixes flow *into* here from that validated tree — see
+> [docs/nora_migration.md](docs/nora_migration.md).
 >
 > **One exception, 2026-08-09 — since converged.** Documentation and comment
 > corrections under `src/` were made here first, ahead of the audio-board upstream.
@@ -310,6 +314,22 @@ State honestly:
   wrapper's Send/Receive bookkeeping one layer up. The names read alike but the two pairs detect
   different failure modes at different layers — a project using both should not assume one
   implies the other.
+
+## 10. Portability boundary
+
+`nora_spi_i2s_tdm.h` **is** the NORA transport contract — the boundary at which portability
+is defined. Do not add a second, smaller portability facade above it: an application-facing
+stream API layered on this transport can only ever offer the intersection of what each
+backend supports, and it doubles the public surface for one peripheral.
+
+Other silicon backends adapt **below** this contract, not in front of it. A capability a
+backend lacks is exposed explicitly — as something the caller can query, or as an explicit
+unsupported result — rather than hidden by narrowing the shared API or emulated behind the
+caller's back.
+
+Sharing the contract does **not** require every backend to compile against a byte-identical
+public header; contract agreement and header identity are separate questions, and only the
+first is promised here.
 
 ---
 
