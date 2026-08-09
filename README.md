@@ -43,9 +43,10 @@ a complete worked example.
 
 The public API is `nora_*` / `NORA_*`. It replaces the `dspic33ak_*` / `DSPIC33AK_*`
 namespace this repository used before 2026-08, and **there are no compatibility aliases** —
-a consumer moving to this version renames its call sites. The substitution is textual:
-`dspic33ak_` → `nora_`, `DSPIC33AK_` → `NORA_`, and that includes the conf-header macros
-(`DSPIC33AK_TDM_*` → `NORA_TDM_*`).
+a consumer moving to this version renames its call sites. The **public** namespace migration
+is textual: `dspic33ak_` → `nora_`, `DSPIC33AK_` → `NORA_`, and that includes the conf-header
+macros (`DSPIC33AK_TDM_*` → `NORA_TDM_*`). It is not a tree-wide substitution —
+backend-private names deliberately retain the silicon tag, as below.
 
 The chip name survives in exactly two places, both deliberate:
 
