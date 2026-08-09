@@ -1,7 +1,8 @@
-# dspic33ak_spi_i2s_tdm — SPI framed-mode I2S/TDM transport HAL
+# nora-hal-dspic33ak-spi-i2s-tdm — SPI framed-mode I2S/TDM transport HAL
 
-A compact, reusable SPI/I2S/TDM **transport** HAL for dsPIC33AK, carved from the upstream
-audio project. It moves audio frames over a framed SPI peripheral with DMA ping-pong and
+A compact, reusable SPI/I2S/TDM **transport** HAL for dsPIC33AK — part of **NORA-HAL**
+(Native On-chip Resource Assistant), a HAL family whose public API is namespaced
+`nora_*` / `NORA_*`. It is carved from the upstream audio project. It moves audio frames over a framed SPI peripheral with DMA ping-pong and
 a per-instance block callback. It is intentionally **small**: it does not try to be a
 turnkey "drop-in and forget" audio stack. Board-specific, failsafe, and CMSIS-SAI
 buffer-semantics concerns stay in layers above it, so a project can extend only what it
@@ -9,8 +10,13 @@ needs.
 
 > Want to run it on hardware first?
 > Start with [dspic33ak-hal-starter](https://github.com/sulaolab/dspic33ak-hal-starter),
-> which vendors validated snapshots of the dsPIC33AK HAL repositories and provides a
+> which vendors validated snapshots of the NORA-HAL repositories and provides a
 > ready-to-build MPLAB X project for the dsPIC33AK Curiosity board.
+
+> **This repository is a published snapshot, not the development tree.** Every file under
+> `src/` is byte-identical to its counterpart in `dspic33ak-hal-starter`, which is in turn
+> byte-identical to the audio-board project that runs these sources on hardware. Fixes flow
+> *into* here from that validated tree — see [docs/nora_migration.md](docs/nora_migration.md).
 
 <img src="docs/images/tdm8-scope-mikrobus-a.png" alt="Oscilloscope capture of MikroBUS-A SPI pins during a TDM8 master smoke demo: BCLK (~12.5 MHz, yellow), a ~50%-duty frame sync FS (~49 kHz, blue, CLC10-generated), and DataOut carrying the TDM8 slot data (red); BCLK/FS = 256" width="900">
 
@@ -23,6 +29,31 @@ project supplies board routing, DMA-channel allocation, and global DMA initializ
 the HAL programs and arms the channels — see
 [dspic33ak-hal-starter](https://github.com/sulaolab/dspic33ak-hal-starter) for
 a complete worked example.
+
+## 0. Naming
+
+The public API is `nora_*` / `NORA_*`. It replaces the `dspic33ak_*` / `DSPIC33AK_*`
+namespace this repository used before 2026-08, and **there are no compatibility aliases** —
+a consumer moving to this version renames its call sites. The substitution is textual:
+`dspic33ak_` → `nora_`, `DSPIC33AK_` → `NORA_`, and that includes the conf-header macros
+(`DSPIC33AK_TDM_*` → `NORA_TDM_*`).
+
+The chip name survives in exactly two places, both deliberate:
+
+- **Implementation file names** carry a backend tag: `nora_spi_i2s_tdm_dspic33ak.c` is the
+  dsPIC33AK backend of the processor-neutral `nora_spi_i2s_tdm.h`. A second processor would
+  add `nora_spi_i2s_tdm_<tag>.c` beside it, not a second header. The tagged
+  `_dspic33ak_hw.{c,h}`, `_dspic33ak_reg.h`, `_dspic33ak_fs_clc.{c,h}`, `_dspic33ak_diag.c`
+  and `_dspic33ak_diag_fast.h` files are backend-private.
+- **Backend-private identifiers** inside those files: the device adapter
+  `NORA_SPI_I2S_TDM_DSPIC33AK_DEVICE` / `..._DEV_AK512` / `..._DEV_AK128`, the register-layer
+  masks, `nora_spi_i2s_tdm_hw_*`, and the `..._dspic33ak_sumprof_*` hot-path inlines — none
+  of which a consumer of the public headers sees.
+
+The tag is `_dspic33ak`, the device family this backend actually drives — not `_dspic33a`,
+which is the *core* family name (dsPIC33A) and one level too coarse. A dsPIC33CK backend
+would be tagged `_dspic33ck`: a different silicon family (dsPIC33**C**), and never
+abbreviated to `_dspic33c`.
 
 ## 1. What this HAL does
 
@@ -38,7 +69,7 @@ a complete worked example.
     and no extra pin (the FS pin is auto-detected by PPS reverse-lookup). A TDM slave receives
     FS as an input, so `fs_shape` is accepted but has no generated-waveform effect (the value is
     still validated and, within a sync domain, compared as a framing field). See
-    `dspic33ak_spi_i2s_tdm_fs_clc.{c,h}`.
+    `nora_spi_i2s_tdm_dspic33ak_fs_clc.{c,h}`.
 - Two configure/lifecycle paths (see "Configuration model" at the end):
   - **System** (recommended, multi-leg): `configure_system(setups, count)` applies ALL legs
     transactionally (all-or-nothing), then `open()` + `start_all_domains()`.
@@ -53,7 +84,7 @@ a complete worked example.
 - Per-instance SPI framed-transport health diagnostics (`SPIROV` / `SPITUR` / `FRMERR`, sampled
   once per completed RX block) — see "DMA and SPI transport-health diagnostics" below.
 - Multi-instance: the core owns a dense logical leg table. The default bank maps rows 0/1 to
-  physical SPI1/SPI2; `DSPIC33AK_TDM_BASE_ON_SPI34` explicitly maps those same rows to SPI3/SPI4.
+  physical SPI1/SPI2; `NORA_TDM_BASE_ON_SPI34` explicitly maps those same rows to SPI3/SPI4.
   `spi1()`...`spi4()` always mean literal physical peripherals, while application-semantic legs
   use `inst(0)`/`inst(1)`. `conf.h` supplies each leg's RX/TX DMA channels, geometry, and initial
   `SYNC_DOMAIN`; per-leg format / clock role come from the runtime config. The core defines the
@@ -64,7 +95,7 @@ a complete worked example.
 - No codec init (e.g. WM8904) — that is board/app code.
 - No general board pin routing in the core — board FS/BCLK/DATA/MCLK routing is supplied by
   the registered port hook. **Exception:** for `TDM master + FS_50PCT`, the HAL-owned CLC10
-  helper (`dspic33ak_spi_i2s_tdm_fs_clc.*`) does touch PPS/CLC — it temporarily repoints the
+  helper (`nora_spi_i2s_tdm_dspic33ak_fs_clc.*`) does touch PPS/CLC — it temporarily repoints the
   already-routed `SSx` FS pin to `CLC10OUT` (and routes `SSx`→RPV8) and restores it on
   `release()`. This is the one place the core itself drives PPS/CLC.
 - No DSP — the callback owns any processing.
@@ -80,27 +111,38 @@ a complete worked example.
 
 ## 3. Required project config
 
-- The project MUST provide `dspic33ak_spi_i2s_tdm_conf.h` on the include path.
-- The HAL folder ships a self-contained template: `dspic33ak_spi_i2s_tdm_conf.h_example`.
+- The project MUST provide `nora_spi_i2s_tdm_conf.h` on the include path.
+- The HAL folder ships a self-contained template: `nora_spi_i2s_tdm_conf.h_example`.
 - Copy/rename the example (or supply an equivalent header) and edit the geometry, logical leg
-  count (`DSPIC33AK_TDM_USE_SPI2`), optional SPI3/4 rows or explicit SPI34 bank selection,
+  count (`NORA_TDM_USE_SPI2`), optional SPI3/4 rows or explicit SPI34 bank selection,
   per-instance DMA channels, and per-leg `SYNC_DOMAIN` defaults. `*.h_example` is never compiled.
 - The template is self-contained (no app-config dependency). A project MAY instead derive
-  the `DSPIC33AK_TDM_*` macros from its own app config (the upstream project does this in
-  `src/dspic33ak_spi_i2s_tdm_conf.h`); that is the integrator's choice and does not make
+  the `NORA_TDM_*` macros from its own app config (the upstream project does this in
+  `src/nora_spi_i2s_tdm_conf.h`); that is the integrator's choice and does not make
   the HAL core app-dependent (dependency is app → conf.h → HAL, never HAL → app).
+
+> **Breaking, for an existing `conf.h`:** `NORA_TDM_SUMPROF` (0 or 1) is now **mandatory** —
+> `nora_spi_i2s_tdm.h` `#error`s if it is undefined. It is not defaulted on purpose: the macro
+> gates code *out*, so an absent macro would evaluate to 0 in the `#if` and silently drop the
+> TDMsum profiler from a project whose `conf.h` predates it. Copy the block from
+> `nora_spi_i2s_tdm_conf.h_example`; `1` is the previous behaviour.
 
 ## 4. Required sibling HALs
 
-- `dspic33ak_dma` — DMA channel setup/arming (required). Standalone repo:
-  [dspic33ak-hal-dma](https://github.com/sulaolab/dspic33ak-hal-dma).
-- `dspic33ak_high_res_timer` — compile/link sibling dependency for the load monitor.
-  Runtime use is gated by `dspic33ak_high_res_timer_is_initialized()`; if the timer is
+- `nora_dma` — DMA channel setup/arming (required). Standalone repo:
+  [nora-hal-dspic33ak-dma](https://github.com/sulaolab/nora-hal-dspic33ak-dma).
+  This dependency is now **explicit in a header**: `nora_spi_i2s_tdm_diag.h` includes
+  `nora_dma.h`, because the diagnostics and the leg table use the DMA HAL's
+  `nora_dma_channel_t` / `nora_dma_trigger_t` / status types instead of the raw CHSEL bytes
+  and bare `uint8_t` / `uint32_t` they used before. A consumer's include path must therefore
+  reach the DMA HAL to compile the public headers, not only to link.
+- `nora_high_res_timer` — compile/link sibling dependency for the load monitor.
+  Runtime use is gated by `nora_high_res_timer_is_initialized()`; if the timer is
   not initialized, `get_load()` / `inst_get_load()` returns `false` and zeroes the supplied
   load struct. Standalone repo:
-  [dspic33ak-hal-timer](https://github.com/sulaolab/dspic33ak-hal-timer) (the
+  [nora-hal-dspic33ak-timer](https://github.com/sulaolab/nora-hal-dspic33ak-timer) (the
   Timer2 high-resolution counter).
-- The SPI register-mask helper (`dspic33ak_spi_i2s_tdm_reg.h`) ships inside this HAL folder.
+- The SPI register-mask helper (`nora_spi_i2s_tdm_dspic33ak_reg.h`) ships inside this HAL folder.
 
 ## 5. Supported devices
 
@@ -121,14 +163,17 @@ Topology availability differs by device:
 > generator is AK512-only.)
 
 The HAL `#error`s on any other device. Adding a new dsPIC33AK part means adding its
-silicon facts in the HW layer (`dspic33ak_spi_i2s_tdm_hw.{c,h}`):
+silicon facts in the HW layer (`nora_spi_i2s_tdm_dspic33ak_hw.{c,h}`):
 
 - SPI instance count
 - `SPIxBUF` / `SPIxCON1` / `SPIxBRG` / `SPIxIMSK` / `SPIxSTAT` pointers
-- DMA trigger CHSEL values
-- CPU IRQ `IEC`/`IFS` masks
+- DMA trigger values (as `nora_dma_trigger_t`)
 
-The vendor part macro is confined to one `DSPIC33AK_SPI_I2S_TDM_DEVICE` adapter
+CPU IRQ enable/flag bits are **no longer** part of that list: they go through the DFP's
+`_DMAxIE` / `_DMAxIF` bit aliases, so there is no per-device `IEC`/`IFS` mask table to extend
+(see "Interrupt ownership").
+
+The vendor part macro is confined to one `NORA_SPI_I2S_TDM_DSPIC33AK_DEVICE` adapter
 (opaque-tag derivation); app/HW code selects on that, not on the raw `__dsPIC33AK*__`.
 
 ## 6. DMA and SPI transport-health diagnostics
@@ -149,7 +194,8 @@ configuration fields. This prevents a secondary FIFO flag from critical-stopping
 hiding the primary DMA failure. It is a continuity/containment policy, not a claim that lost data
 is benign; all DMA and SPI diagnostics remain observable.
 
-- `dspic33ak_spi_i2s_tdm_hw_sample_ack_errflags(inst)` samples `SPIxSTAT` once per completed
+- `nora_spi_i2s_tdm_hw_sample_ack_errflags(inst)` — declared in the backend-private
+  `nora_spi_i2s_tdm_dspic33ak_hw.h`, not in a public header — samples `SPIxSTAT` once per completed
   RX block and returns the observed `SPIROV | SPITUR | FRMERR` mask (all three bits, as read,
   before any clear).
 - **Sticky-flag ownership contract.** Calling this function is how the HAL takes ownership of
@@ -160,7 +206,7 @@ is benign; all DMA and SPI diagnostics remain observable.
   those two bits already acked — there is exactly one ack point per instance, inside the
   RX-block ISR path. `SPITUR` (R/HSC) is never software-clearable — hardware self-clears it only
   on `SPIEN=0` — so it is only ever *observed*, and callers always see its live state either way.
-- `dspic33ak_spi_i2s_tdm_diag_note_errflags()` folds that mask into four per-instance counters,
+- `nora_spi_i2s_tdm_diag_note_errflags()` folds that mask into four per-instance counters,
   read back via `get_status()` / `inst_get_status()`:
   - `err_rov_block_count` — RX blocks in which `SPIROV` (receive-buffer overrun) was observed.
   - `err_tur_block_count` — RX blocks in which `SPITUR` (transmit underrun) was observed set.
@@ -173,15 +219,43 @@ is benign; all DMA and SPI diagnostics remain observable.
 - **No automatic recovery policy.** The HAL only counts and reports these flags — it does not
   reset the peripheral, retry, or otherwise react to them; see "What this HAL does NOT do".
 
+### Engine-wide combined-occupancy profiler ("TDMsum")
+
+The per-leg `get_load()` monitor times each RX-block ISR on its own, so leg A's peak and
+leg B's peak can fall in different windows — adding the two peaks overstates the real load.
+The TDMsum profiler instead reports, over one fixed common window, the peak of the **time
+union** during which *any* TDM RX-block ISR was executing (overlap counted once):
+
+- `nora_spi_i2s_tdm_tdmsum_configure(window_period_ticks)` — set the window length in raw
+  high-res-timer counts (the block deadline converted to counts) and re-base the grid; call
+  again whenever the deadline changes.
+- `nora_spi_i2s_tdm_tdmsum_reset()` — re-base and clear peaks, keeping the window length
+  (use on stop/resume).
+- `nora_spi_i2s_tdm_tdmsum_get(&out, clear_peak)` — snapshot `max_busy_ticks` /
+  `saturated_count`.
+
+All three mask every configured leg's RX-DMA IE around the access, so the caller does not.
+The measurement is TDM **active wall time**: a higher-priority non-TDM interrupt that preempts
+a TDM ISR is counted inside it. The three entry points and the profiler's ISR hooks exist only
+when `NORA_TDM_SUMPROF` is 1 — with 0 a reference fails at compile time rather than silently
+returning a never-updated zero snapshot. The hot-path hooks live in the backend-private
+`nora_spi_i2s_tdm_dspic33ak_diag_fast.h` as `static inline`, so they add no call overhead in
+the ISR.
+
 ## 7. Interrupt ownership
 
-- `DSPIC33AK_TDM_DEFINE_DMA_VECTORS=1` (default): the HAL defines the RX DMA interrupt
+- `NORA_TDM_DEFINE_DMA_VECTORS=1` (default): the HAL defines the RX DMA interrupt
   vectors itself (turnkey). Nothing else to wire.
-- `DSPIC33AK_TDM_DEFINE_DMA_VECTORS=0`: the HAL defines no vectors; the integrator owns the
-  IVT and calls `dspic33ak_spi_i2s_tdm_inst_rx_isr(inst)` from their own `_DMA<rx>Interrupt`
+- `NORA_TDM_DEFINE_DMA_VECTORS=0`: the HAL defines no vectors; the integrator owns the
+  IVT and calls `nora_spi_i2s_tdm_inst_rx_isr(inst)` from their own `_DMA<rx>Interrupt`
   for each instance.
 
 TX is interrupt-less (no TX interrupt is enabled by the transport).
+
+The CPU interrupt enable/flag bits are driven through the DFP's single-bit aliases
+(`_DMAxIE` / `_DMAxIF`) rather than a per-device `IEC`/`IFS` pointer-and-mask table. Besides
+being shorter, that removes the AK128 bank straddle the table had to encode by hand (its DMA
+channels span `IEC1` and `IEC2`), so the HW layer no longer carries CPU-IRQ mask rows.
 
 ## 8. Tested envelope
 
@@ -236,11 +310,11 @@ against the old API will not compile until updated; the map:
 
 | Before | Now |
 |---|---|
-| `dspic33ak_spi_i2s_tdm_role_t`, `..._ROLE_MASTER` / `..._ROLE_SLAVE` | `..._clock_role_t`, `..._CLOCK_MASTER` / `..._CLOCK_SLAVE` |
+| `nora_spi_i2s_tdm_role_t`, `..._ROLE_MASTER` / `..._ROLE_SLAVE` | `..._clock_role_t`, `..._CLOCK_MASTER` / `..._CLOCK_SLAVE` |
 | `config_t.role` | `config_t.clock_role` |
 | `config_t.ignore_overflow` / `ignore_underrun` | removed — the HAL hard-forces `IGNROV=1` / `IGNTUR=1` |
 | `open(role)` | `open(void)` — role derived from the committed primary leg |
-| `DSPIC33AK_TDM_INSTANCE_LIST(X)` X-macro + `BLOCK_REF` / `FOLLOWER` | dense logical leg table with literal physical `spiN()` accessors |
+| `NORA_TDM_INSTANCE_LIST(X)` X-macro + `BLOCK_REF` / `FOLLOWER` | dense logical leg table with literal physical `spiN()` accessors |
 | per-leg `inst_configure()` ×N for a multi-leg stream | `configure_system(setups, count)` (transactional, all-or-nothing) |
 | public `inst_arm()` / `inst_go()` | internal only — use `inst_start()` / `start_domain()` / `start_all_domains()` |
 
@@ -303,6 +377,6 @@ instance runs no DSP path (its zeroed TX half stays silent).
 The bool-returning calls — `set_port()`, `open()`, `close()`, `inst_configure()`,
 `configure_system()`, `inst_start()`, `inst_stop()`, `start_domain()`, `start_all_domains()`,
 `stop_domain()`, `stop_all_domains()`, `set_block_callback()` — collapse several causes into one
-`false`. On `false`, `dspic33ak_spi_i2s_tdm_get_last_error()` returns the most specific reason
-(`dspic33ak_spi_i2s_tdm_error_t`). This is a debug aid only — stream health (deadline
+`false`. On `false`, `nora_spi_i2s_tdm_get_last_error()` returns the most specific reason
+(`nora_spi_i2s_tdm_error_t`). This is a debug aid only — stream health (deadline
 misses, block counts) lives in `get_status()`, not here.
